@@ -1,98 +1,83 @@
-* Андрей Славчев Котларски, фн 22430
-** Курсов проект по "Извличане на информация"
+This is an Emacs Lisp extension realizing a simple mixed language
+model for information retrieval in paragraphs of files grouped in
+multiple directories.
+Paragraphs are assumed to be separated by a blank line.  The formula
+used for sorting relevance is:
+P(w|p) = lambda*P(w|Mp) + (1 - lambda)*P(w|Mc)
+where Mp is probabilities model for a paragraph, Mc - probabilities
+model for the whole collection and 0 < lambda <= 1.
+It's only been tested on cvs version of GNU/Emacs 23.1.50 onwards.
 
-Проектът реализира разширение за Emacs-фамилията редактори (тествано
-единствено на cvs версия на GNU/Emacs 23.1.50.1) на elisp (Emacs
-Lisp), добавящо функционалност за индексиране и търсене в множество от
-файлове по метод на опростен смесен езиков модел.
-
-Файлове:
-ir-lm.el (elisp код), ir-lm.elc (байт-компилирана версия на първия,
-препоръчителна за оптимизирано действие)
-опционни:
+Files:
+ir-lm.el (elisp source)
+optional:
 bg-stop-words.txt, stem-rules.txt, stem-rules2.txt, stem-rules3.txt
 
-Инсталиране:
-За работа в текущата сесия може просто да се зареди някой от ir-lm
-файловете чрез "M-x load-file" (Alt+X load-file ENTER).  При
-необходимост от автоматично зареждане със стартиране на Emacs,
-необходимо е един или двата файла да се поставят в директория от
-load-path (за по-лесно могат да се поставят в някоя от директориите,
-където самия Emacs съхранява .el и .elc файлове, примерно site-lisp) и
-към .emacs файла да се добави
-(require 'ir-lm)
-При наличие и на двата файла, Emacs автоматично предпочита .elc файла
-при положение, че датата на последна промяна е по-скорошна.
-Допълнителни файлове се групират в директория "~/.ir/"
-(posix системи) или "C:\\ir\" (windows системи).  Файлове със стоп
-думи се поставят в под-директория с име "stop-words/", a файлове със
-стемиращи правила - в "stem-rules/".
+Adding (require 'ir-lm) to .emacs allows automatic loading of the
+extension (after adding to load-path).  Optional files are grouped in
+directory "~/.ir/" on posix systems or "C:\\ir\" on windows systems.
+Stop word files should be put in subdirectory "stop-words/".  Files
+with stemming rules must be in subdirectory "stem-rules/".  These
+directories are recursively scanned so any sort of subdirectory
+structures would suffice and all files will be used accordingly.  Stop
+word files may contain different languages but stemming rules
+processing is tuned only for bulgarian at the moment (not really a
+problem to make a directory for each needed language with stemming
+rules and then adding some specific functions for loading these rules
+and stemming for each such subdirectory).
 
-Употреба:
-Командите се извикват с "M-x команда".  При необходимост може да се
-добавят кратки пътища с бутони примерно през .emacs файла във вид на
-(global-set-key (kbd "s-s") 'ir-lm-search) ;търсене през
-                                           ;Super(windows бутона)+S
-
-Команди:
+Commands:
 ir-lm-index
-Създава и зарежда индекс на всички файлове в зададената директория
-както и под-директориите и.  Индексът не е съхранен на твърдия диск, а
-в оперативната памет.  Опцията за тип файлове дава възможност за
-поредица от "глоб" наименования за филтриране на файлове за индексиране
-според името.  Например
-*.txt *6?.pdf *boza*
-би задало индексиране на файлове, чието име завършва на ".txt", редом
-с такива, завършващи на 6, произволен символ и .pdf, както и такива,
-съдържащи boza в името си.  Опцията за кодиране определя третирането
-на текущо индексираните файлове.  В случай, че подразбиращото се
-(което би трябвало да е UTF-8) не е подходящо за даден набор файлове
-(търсене на срещащи се думи не дава никакъв резултат), е добре да се
-избере подходящо кодиране.  Опцията за добавяне към текущата
-конфигурация определя дали индексът се зарежда "на-чисто", премахвайки
-досегашния, или сливайки досегашните и новите данни.  Това позволява в
-паметта да има множество индекси.
-
-ir-lm-load-index
-Зарежда индекс от избран файл в оперативната памет.  Опцията за
-добавяне към текущата конфигурация е с идентичен смисъл както и при
-индексирането, позволявайки едновременно търсене в множество индекси.
-Индексна информация за файлове, които не са налични на файловата
-система, не се зарежда.  При сливане на индекси и наличие на файл и в
-досегашния и новия индекс се предпочита по-скорошно индексираната
-версия.
+Creates and loads an index of all files of directory and its
+subdirectories.  Index is not saved on the disk.  The option for file
+types allows multiple glob filters (separated with space) to be
+applied to file names, thus indexing just specific files.  The coding
+option allows choosing non-default encoding for all files.  The option
+for adding to current index determines whether index is freshly loaded
+deleting current index or merging current and new indexes thus
+allowing search in multiple indexes (treated as one from that
+moment).  If auxiliary files (stop words, stem rules) have not been
+loaded - attempts to load them.
 
 ir-lm-write-index
-Запис на индекса от оперативната памет върху твърдия диск в посочен
-файл.
+Writes current index to a chosen file.
+
+ir-lm-load-index
+Loads an index from a chosen file.  The option for adding to current
+configuration is analogous to the option in ir-lm-index, allowing
+merging of multiple indexes.  Index information for files not present
+in the file system (as recorded in the index) is not loaded.  When
+merging indexes having information for identical (according to path)
+files, most recently indexed version for such files is chosen.  If
+auxiliary files (stop words, stem rules) have not been loaded -
+attempts to load them.
 
 ir-lm-search
-Осъществява търсене в параграфите по зададени думи.
-Резултатите се показват в нов буфер с име на файл, оценка и
-едно-редово резюме, които при натискане с ляв бутон на мишката или
-enter, отварят съответния файл, позиционират се в началото на
-съответния параграф и оцветяват търсените думи.
+Searches indexed paragraphs for words showing a line resumes in a new
+buffer and links to the result paragraphs.  When a result is clicked
+(enter also suffices), marker is positioned upon the result paragraph
+and search terms are coloured.
 
 ir-clear
-Изчиства всички текущи индексни данни (хеш-таблици, листове) на
-разширението от оперативната памет.
+Freeing index data from memory.  (there probably is a problem with the
+way it's done, as Emacs keeps showing as high memory use)
 
 ir-lm-change-lambda
-Дава възможност да се промени стойността на ламбда параметъра
-(подразбиращо се 0.5).
+Allowing modifying the lambda search parameter for this language model
+(defaults to 0.5)
 
 ir-change-stem-level
-Променя нивото на стемиране (подразбиращото се е 1, най-високо).
+Changes stemming level (it only applies for newly indexing and when
+auxiliary hashes, stop-words and stem-rules have been cleared or not
+yet loaded).
 
 ir-lm-change-max-results
-Променя максималния брой показвани резултати (подразбиращото се е 30).
+Changes maximum number of search results showed.
 
 ir-lm-change-min-words
-Променя минималния брой думи, необходими за параграф, за да попадне в
-индекса при ново индексиране (подразбиращото се е 20).
+Changes the minimum number of words needed for a paragraph to be
+indexed (defaults to 20) on new indexing.
 
 ir-lm
-Предоставя удобен интерфейс към горните команди, както и файловете с
-връзка до местоположенията им в текущия индекс (показват се и се търси
-само в текущо съществуващи файлове според пълното им наименование в
-индекса).
+A convenient interface for the above commands as well as links to all
+files in current index.
