@@ -87,8 +87,8 @@ QUERY is list of search terms."
 
 (defun ir-file-words (paragraphs)
   "Get total count of words for file by summing count in its PARAGRAPHS."
-  (apply '+ (mapcar '(lambda (sexp)
-		       (cadr sexp))
+  (apply '+ (mapcar (lambda (sexp)
+		      (cadr sexp))
 		    paragraphs)))
 
 (defun ir-list-index ()
@@ -222,14 +222,14 @@ If ALL is non-nil - ask to clear words' cache as well."
 (defmacro dowords (vars &rest body)
   "Bind VARS to consecutive words and execute BODY."
   (if (listp vars)
-      `(let ,(mapcar '(lambda (var)
-			`(,var (get-next-word)))
+      `(let ,(mapcar (lambda (var)
+		       `(,var (get-next-word)))
 		     vars)
 	 (while ,(car vars)
 	   ,@body
 	   (setq ,@(apply 'nconc
-			  (mapcar '(lambda (var)
-				     `(,var (get-next-word)))
+			  (mapcar (lambda (var)
+				    `(,var (get-next-word)))
 				  vars)))))
     `(let ((,vars (get-next-word)))
        (while ,vars
@@ -291,8 +291,8 @@ Return new val if key is added/changed, nil if key is removed."
 (defun hash-to-assoc (h-table)
   "Turn a H-TABLE to assoc-list."
   (let ((a-list nil))
-    (maphash '(lambda (key val)
-		(push (cons key val) a-list))
+    (maphash (lambda (key val)
+	       (push (cons key val) a-list))
 	     h-table)
     a-list))
 
@@ -460,9 +460,9 @@ Beware, only usefull in `ir-lm-extract-words'."
 	     acc)
      (setq *ir-total-count*	;if paragraph is too short, discard
 	   (- *ir-total-count* paragraph-total-count))
-     (maphash '(lambda (wrd cnt)	;and remove word counts
-		 (if (not (inc-hash-value wrd *ir-global-hash* (- cnt)))
-		     (setq *ir-words-count* (1- *ir-words-count*))))
+     (maphash (lambda (wrd cnt)	;and remove word counts
+		(if (not (inc-hash-value wrd *ir-global-hash* (- cnt)))
+		    (setq *ir-words-count* (1- *ir-words-count*))))
 	      paragraph)))
 
 (defun ir-lm-extract-words (full-file-name &optional encoding)
@@ -501,23 +501,23 @@ Save ENCODING for further operations."
   "Subtract from global words hash key-values corresponding in POST.
 SAVE-GLOBALS-P determines whether global indexes shouldn't be touched."
   (setq *ir-total-count* (- *ir-total-count* (cadr post)))
-  (maphash '(lambda (key val)
-	      (if (and (not (inc-hash-value key *ir-global-hash* (- val)))
-		       (not save-globals-p))
-		  (setq *ir-words-count* (1- *ir-words-count*))))
+  (maphash (lambda (key val)
+	     (if (and (not (inc-hash-value key *ir-global-hash* (- val)))
+		      (not save-globals-p))
+		 (setq *ir-words-count* (1- *ir-words-count*))))
 	   (cadddr post)))
 
 (defun ir-remove-postings (file &optional save-globals-p)
   "Clean all info for FILE in hashes.
 SAVE-GLOBALS-P determines whether global indexes shouldn't be touched."
-  (let ((file-posts (cdddr (find-fn '(lambda (post)
-				       (equal file (car post)))
+  (let ((file-posts (cdddr (find-fn (lambda (post)
+				      (equal file (car post)))
 				    *ir-hashes*))))
     (dolist (post file-posts)
       (ir-remove-post post save-globals-p))
     (setq *ir-hashes* (delete-fn *ir-hashes*
-				 '(lambda (file-post)
-				    (equal file (car file-post)))))))
+				 (lambda (file-post)
+				   (equal file (car file-post)))))))
 
 (defun ir-lm-process-paragraphs (file &optional encoding)
   "Load FILE to temp buffer and process its words.
@@ -532,10 +532,10 @@ If ENCODING is nil, use default encoding when loading FILE."
   "Get printed representation for posting for paragraph LST."
   (princ "\n" (current-buffer))
   (prin1 (nconc (list (car lst) (cadr lst) (caddr lst))	;(file-path encoding time)
-		(mapcar '(lambda (sublst)
-			   (nconc (list (car sublst) ;(point total-words words words-hash)
-					(cadr sublst) (caddr sublst))
-				  (hash-to-assoc (cadddr sublst))))
+		(mapcar (lambda (sublst)
+			  (nconc (list (car sublst) ;(point total-words words words-hash)
+				       (cadr sublst) (caddr sublst))
+				 (hash-to-assoc (cadddr sublst))))
 			(cdddr lst)))
 	 (current-buffer)))
 
@@ -574,7 +574,7 @@ If APPEND-P is non-nil, merge to the current index."
     (setq *ir-global-hash* (make-hash-table :test 'equal)))
   (ir-load-auxiliary)
   (message "Indexing...")
-  (maprdir '(lambda (file) (ir-lm-process-paragraphs file encoding))
+  (maprdir (lambda (file) (ir-lm-process-paragraphs file encoding))
 	   dir file-types)
   (message "Files successfully indexed.")
   (ir-refresh-view))
@@ -588,15 +588,15 @@ If APPEND-P is non-nil, merge to the current index."
   "Convert file saved POST info to actually used structures.
 INC-GLOBALS-P determines whether global word counts should be adjusted."
   (nconc (list (car post) (cadr post) (caddr post)) ;(file-name encoding time)
-	 (mapcar '(lambda (subpost)
-		    (let ((total-words (cadr subpost))
-			  (index-words (caddr subpost)))
-		      (if inc-globals-p
-			  (setq *ir-total-count*
-				(+ *ir-total-count* total-words)))
-		      (list (car subpost) total-words index-words
-			    (ir-assoc-to-hash (cdddr subpost) index-words
-					      nil inc-globals-p))))
+	 (mapcar (lambda (subpost)
+		   (let ((total-words (cadr subpost))
+			 (index-words (caddr subpost)))
+		     (if inc-globals-p
+			 (setq *ir-total-count*
+			       (+ *ir-total-count* total-words)))
+		     (list (car subpost) total-words index-words
+			   (ir-assoc-to-hash (cdddr subpost) index-words
+					     nil inc-globals-p))))
 		 (cdddr post))))
 
 (defun ir-lm-load-file-posting (post &optional inc-globals-p)
@@ -604,7 +604,7 @@ INC-GLOBALS-P determines whether global word counts should be adjusted."
 INC-GLOBALS-P determines whether global word counts should be adjusted."
   (let* ((file-path (car post))
 	 (existing-file-time
-	  (caddr (find-fn '(lambda (post) (equal file-path (car post)))
+	  (caddr (find-fn (lambda (post) (equal file-path (car post)))
 			  *ir-hashes*))))
     (if existing-file-time		;check if file is already in index
 	(if (file-exists-p file-path)
@@ -676,17 +676,17 @@ LAMBDA is LM parameter between 0 and 1."
       (setq lambda 0.5))
   (let ((result
 	 (apply '*
-		(mapcar '(lambda (word)
-			   (let ((global-count
-				  (gethash word *ir-global-hash* 0)))
-			     (if (> global-count 0)
-				 (+ (* lambda
-				       (/ (float (gethash word hash 0))
-					  base))
-				    (* (- 1 lambda)
-				       (/ (float global-count)
-					  *ir-total-count*)))
-			       1)))
+		(mapcar (lambda (word)
+			  (let ((global-count
+				 (gethash word *ir-global-hash* 0)))
+			    (if (> global-count 0)
+				(+ (* lambda
+				      (/ (float (gethash word hash 0))
+					 base))
+				   (* (- 1 lambda)
+				      (/ (float global-count)
+					 *ir-total-count*)))
+			      1)))
 			words))))
     (if (= result 1) 0 result)))
 
@@ -696,14 +696,14 @@ WORDS is list of words in query.
 LAMBDA is LM parameter between 0 and 1."
   (or lambda
       (setq lambda 0.5))
-  (apply '* (mapcar '(lambda (word)
-		       (let ((global-count
-			      (gethash word *ir-global-hash* 0)))
-			 (if (> global-count 0)
-			     (* (- 1 lambda)
-				(/ (float global-count)
-				   *ir-total-count*))
-			   1)))
+  (apply '* (mapcar (lambda (word)
+		      (let ((global-count
+			     (gethash word *ir-global-hash* 0)))
+			(if (> global-count 0)
+			    (* (- 1 lambda)
+			       (/ (float global-count)
+				  *ir-total-count*))
+			  1)))
 		    words)))
 
 
@@ -790,31 +790,31 @@ QUERY is list of current search terms."
 (defun ir-lm-insert-results (best query)
   "Insert in current buffer BEST results.
 QUERY is list of current search terms."
-  (mapc '(lambda (post)
-	   (let ((file (aref post 1))
-		 (score (aref post 0))
-		 (marker (aref post 2))
-		 (encoding (aref post 3))
-		 (preview ""))
-	     (if (<= score 0)
-		 (throw 'end-results nil) ;premature end of meaningful results
-	       (insert "\n")
-	       (insert (make-link (car (nreverse (split-string file "/")))
-				  'ir-lm-jump-to-result file marker
-				  t encoding query))
-	       (insert (format " [%f]" (* score 1000000)))
-	       (when (number-or-marker-p marker)
-		 (with-temp-buffer
-		   (let ((coding-system-for-read encoding))
-		     (insert-file-contents file))
-		   (goto-char marker)
-		   (setq preview
-			 (buffer-substring-no-properties marker
-							 (line-end-position)))
-		   (kill-buffer (current-buffer)))
-		 (insert "\n")
-		 (insert (make-link preview 'ir-lm-jump-to-result
-				    file marker nil encoding query))))))
+  (mapc (lambda (post)
+	  (let ((file (aref post 1))
+		(score (aref post 0))
+		(marker (aref post 2))
+		(encoding (aref post 3))
+		(preview ""))
+	    (if (<= score 0)
+		(throw 'end-results nil) ;premature end of meaningful results
+	      (insert "\n")
+	      (insert (make-link (car (nreverse (split-string file "/")))
+				 'ir-lm-jump-to-result file marker
+				 t encoding query))
+	      (insert (format " [%f]" (* score 1000000)))
+	      (when (number-or-marker-p marker)
+		(with-temp-buffer
+		  (let ((coding-system-for-read encoding))
+		    (insert-file-contents file))
+		  (goto-char marker)
+		  (setq preview
+			(buffer-substring-no-properties marker
+							(line-end-position)))
+		  (kill-buffer (current-buffer)))
+		(insert "\n")
+		(insert (make-link preview 'ir-lm-jump-to-result
+				   file marker nil encoding query))))))
 	best))
 
 (defun ir-lm-search (query-str &optional cnt)
@@ -829,15 +829,15 @@ QUERY is list of current search terms."
     (let ((results (generate-new-buffer "*Search results*")))
       (set-buffer results)
       (local-set-key (kbd "<M-down>")
-		     '(lambda () (interactive) (forward-line 2)))
+		     (lambda () (interactive) (forward-line 2)))
       (local-set-key (kbd "<M-up>")
-		     '(lambda () (interactive) (forward-line -2)))
-      (local-set-key (kbd "q") '(lambda () (interactive) (kill-buffer)))
+		     (lambda () (interactive) (forward-line -2)))
+      (local-set-key (kbd "q") (lambda () (interactive) (kill-buffer)))
       (switch-to-buffer results)
       (insert "Results for: " query-str)
       (catch 'end-results
-	(let ((query (mapcar '(lambda (word)
-				(ir-process-word (downcase word)))
+	(let ((query (mapcar (lambda (word)
+			       (ir-process-word (downcase word)))
 			     (split-string query-str))))
 	  (ir-lm-insert-results (ir-lm-get-best-scores query cnt) query)))
       (setq buffer-read-only t)
@@ -863,8 +863,8 @@ QUERY is list of current search terms."
   (local-set-key (kbd "p") 'ir-lm-change-min-words)
   (local-set-key (kbd "b") 'ir-lm-change-lambda)
   (local-set-key (kbd "s") 'ir-change-stem-level)
-  (local-set-key (kbd "q") '(lambda () (interactive) (kill-buffer)))
-  (local-set-key (kbd "r") '(lambda () (interactive) (ir-refresh-view))))
+  (local-set-key (kbd "q") (lambda () (interactive) (kill-buffer)))
+  (local-set-key (kbd "r") (lambda () (interactive) (ir-refresh-view))))
 
 (defun ir-lm ()
   "Create buffer with information and shortcuts."
@@ -903,7 +903,7 @@ QUERY is list of current search terms."
 		       'ir-change-stem-level)
 	    "\n"
 	    (make-link "q -> quit \(without clearing\)"
-		       '(lambda () (interactive) (kill-buffer)))
+		       (lambda () (interactive) (kill-buffer)))
 	    "\n\n"
 	    "maximum results = " (format "%d\n" *ir-max-results*)
 	    "minimum number of words in paragraph = "

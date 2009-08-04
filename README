@@ -29,15 +29,15 @@ and stemming for each such subdirectory).
 Commands:
 ir-lm-index
 Creates and loads an index of all files of directory and its
-subdirectories.  Index is not saved on the disk.  The option for file
+subdirectories.  Index is not saved on disk.  The option for file
 types allows multiple glob filters (separated with space) to be
 applied to file names, thus indexing just specific files.  The coding
 option allows choosing non-default encoding for all files.  The option
 for adding to current index determines whether index is freshly loaded
 deleting current index or merging current and new indexes thus
-allowing search in multiple indexes (treated as one from that
-moment).  If auxiliary files (stop words, stem rules) have not been
-loaded - attempts to load them.
+allowing search in multiple indexes (treated as one from that moment).
+If auxiliary files (stop words, stem rules) have not been loaded -
+attempts to load them.
 
 ir-lm-write-index
 Writes current index to a chosen file.
