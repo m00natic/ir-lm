@@ -5,6 +5,9 @@
 
 
 ;;; History:
+;; 5.VIII.2009 - Version 1.8
+					; Abstracting away file-postings
+					;  structure
 ;; 31.VII.2009 - Version 1.7
 					; Generating word processing function
 					;  on the fly, thus optimizing
@@ -64,6 +67,47 @@
 (defvar *ir-lm-min-words* 20 "Minimal number of words in paragraph.")
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;; *ir-hashes* selectors
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defmacro make-getter (getter-name arg)
+  "Create a macro for writing getters with name MAKE- GETTER-NAME and argument ARG."
+  `(defmacro ,(intern (concat "make-"
+			      (symbol-name getter-name)))
+     (name &rest body)
+     ,(concat "Create a selector for `*ir-hashes*' with name GET- NAME and BODY.
+This selector has one argument with structure as `*ir-hashes*'
+named `" (symbol-name arg)"'.
+Do not use symbol `bla-arg' in the body.")
+     (let ((bla-arg ',arg))
+       `(defun ,(intern (concat "get-"
+				(symbol-name name)))
+	  (,bla-arg)
+	  ,@body))))
+
+;; getters for file structures
+(make-getter ir-file-getter ir-file)
+
+(make-ir-file-getter ir-file-name (car ir-file))
+(make-ir-file-getter ir-file-encoding (cadr ir-file))
+(make-ir-file-getter ir-file-time (caddr ir-file))
+(make-ir-file-getter ir-file-paragraphs (cdddr ir-file))
+
+;; getters for paragraph structures
+(make-getter ir-paragraph-getter ir-paragraph)
+
+(make-ir-paragraph-getter ir-paragraph-point (car ir-paragraph))
+(make-ir-paragraph-getter ir-paragraph-total-words (cadr ir-paragraph))
+(make-ir-paragraph-getter ir-paragraph-distinct-words
+			  (caddr ir-paragraph))
+(make-ir-paragraph-getter ir-paragraph-hash (cadddr ir-paragraph))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;; visualisation and set-er commands
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defun make-link (text cmd &optional file point underline-p encoding query)
   "Return a TEXT propertized as a link that invokes CMD when clicked.
 FILE is to be opened and cursor moved to position POINT.
@@ -94,11 +138,14 @@ QUERY is list of search terms."
 (defun ir-list-index ()
   "List all files currently in index."
   (dolist (file *ir-hashes*)
-    (let ((file-path (car file)))
+    (let ((file-path (get-ir-file-name file)))
       (if (file-exists-p file-path)
 	  (insert "\n" (make-link file-path 'ir-lm-jump-to-result
-				  file-path 1 nil (cadr file))
-		  (format " [%d]" (ir-file-words (cdddr file))))))))
+				  file-path 1 nil
+				  (get-ir-file-encoding file))
+		  (format " [%d]"
+			  (ir-file-words (get-ir-file-paragraphs
+					  file))))))))
 
 (defun ir-refresh-view ()
   "Refresh file names in current index."
@@ -505,19 +552,21 @@ SAVE-GLOBALS-P determines whether global indexes shouldn't be touched."
 	     (if (and (not (inc-hash-value key *ir-global-hash* (- val)))
 		      (not save-globals-p))
 		 (setq *ir-words-count* (1- *ir-words-count*))))
-	   (cadddr post)))
+	   (get-ir-paragraph-hash post)))
 
 (defun ir-remove-postings (file &optional save-globals-p)
   "Clean all info for FILE in hashes.
 SAVE-GLOBALS-P determines whether global indexes shouldn't be touched."
-  (let ((file-posts (cdddr (find-fn (lambda (post)
-				      (equal file (car post)))
-				    *ir-hashes*))))
+  (let ((file-posts (get-ir-file-paragraphs
+		     (find-fn (lambda (post)
+				(equal file (get-ir-file-name post)))
+			      *ir-hashes*))))
     (dolist (post file-posts)
       (ir-remove-post post save-globals-p))
     (setq *ir-hashes* (delete-fn *ir-hashes*
 				 (lambda (file-post)
-				   (equal file (car file-post)))))))
+				   (equal file (get-ir-file-name
+						file-post)))))))
 
 (defun ir-lm-process-paragraphs (file &optional encoding)
   "Load FILE to temp buffer and process its words.
@@ -531,12 +580,17 @@ If ENCODING is nil, use default encoding when loading FILE."
 (defun print-posting (lst)
   "Get printed representation for posting for paragraph LST."
   (princ "\n" (current-buffer))
-  (prin1 (nconc (list (car lst) (cadr lst) (caddr lst))	;(file-path encoding time)
+  (prin1 (nconc (list (get-ir-file-name lst)
+		      (get-ir-file-encoding lst)
+		      (get-ir-file-time lst))
 		(mapcar (lambda (sublst)
-			  (nconc (list (car sublst) ;(point total-words words words-hash)
-				       (cadr sublst) (caddr sublst))
-				 (hash-to-assoc (cadddr sublst))))
-			(cdddr lst)))
+			  (nconc
+			   (list (get-ir-paragraph-point sublst)
+				 (get-ir-paragraph-total-words sublst)
+				 (get-ir-paragraph-distinct-words sublst))
+			   (hash-to-assoc (get-ir-paragraph-hash
+					   sublst))))
+			(get-ir-file-paragraphs lst)))
 	 (current-buffer)))
 
 (defun ir-lm-write-index (file)
@@ -587,28 +641,36 @@ If APPEND-P is non-nil, merge to the current index."
 (defun ir-lm-get-file-posting (post &optional inc-globals-p)
   "Convert file saved POST info to actually used structures.
 INC-GLOBALS-P determines whether global word counts should be adjusted."
-  (nconc (list (car post) (cadr post) (caddr post)) ;(file-name encoding time)
+  (nconc (list (get-ir-file-name post)
+	       (get-ir-file-encoding post)
+	       (get-ir-file-time post))
 	 (mapcar (lambda (subpost)
-		   (let ((total-words (cadr subpost))
-			 (index-words (caddr subpost)))
+		   (let ((total-words (get-ir-paragraph-total-words
+				       subpost))
+			 (index-words (get-ir-paragraph-distinct-words
+				       subpost)))
 		     (if inc-globals-p
 			 (setq *ir-total-count*
 			       (+ *ir-total-count* total-words)))
-		     (list (car subpost) total-words index-words
+		     (list (get-ir-paragraph-point subpost)
+			   total-words index-words
 			   (ir-assoc-to-hash (cdddr subpost) index-words
 					     nil inc-globals-p))))
-		 (cdddr post))))
+		 (get-ir-file-paragraphs post))))
 
 (defun ir-lm-load-file-posting (post &optional inc-globals-p)
   "Get file saved POST.  If newer posting already exists, discard.
 INC-GLOBALS-P determines whether global word counts should be adjusted."
-  (let* ((file-path (car post))
+  (let* ((file-path (get-ir-file-name post))
 	 (existing-file-time
-	  (caddr (find-fn (lambda (post) (equal file-path (car post)))
-			  *ir-hashes*))))
+	  (get-ir-file-time (find-fn (lambda (post)
+				       (equal file-path
+					      (get-ir-file-name post)))
+				     *ir-hashes*))))
     (if existing-file-time		;check if file is already in index
 	(if (file-exists-p file-path)
-	    (when (time-less-p existing-file-time (caddr post))	;if post is newer
+	    (when (time-less-p existing-file-time
+			       (get-ir-file-time post))	;if post is newer
 	      (ir-remove-postings file-path (not inc-globals-p)) ;remove old posting from *ir-hashes*
 	      (ir-lm-get-file-posting post inc-globals-p))
 					;discard posting and remove existing from *ir-hashes*
@@ -732,19 +794,21 @@ Return vector of vectors with info for best paragraphs."
   (let ((best (make-vector cnt [0 "" -1 nil nil]))
 	(min-score (ir-lm-posting-min-score query *ir-lm-lambda*)))
     (dolist (file *ir-hashes*)
-      (let ((file-path (car file)))
+      (let ((file-path (get-ir-file-name file)))
 	(if (file-exists-p file-path)
-	    (dolist (post (cdddr file))
+	    (dolist (post (get-ir-file-paragraphs file))
 	      (let ((score
-		     (ir-lm-posting-score (cadddr post)
-					  (cadr post)
+		     (ir-lm-posting-score (get-ir-paragraph-hash post)
+					  (get-ir-paragraph-total-words
+					   post)
 					  query
 					  *ir-lm-lambda*)))
 		(if (> score min-score)
 		    (setq best
-			  (ir-lm-insert-post ;[score file point encoding]
+			  (ir-lm-insert-post
 			   (vector score file-path
-				   (car post) (cadr file) (cadr post))
+				   (get-ir-paragraph-point post)
+				   (get-ir-file-encoding file))
 			   best (1- cnt)))))))))
     best))
 
