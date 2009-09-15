@@ -119,8 +119,8 @@ QUERY is list of search terms."
     (define-key map (kbd "RET") cmd)
     (propertize text
 		'keymap map
-		'face (if underline-p
-			  '((:foreground "green") (:underline t)))
+		'face (when underline-p
+			'((:foreground "green") (:underline t)))
 		'mouse-face 'highlight
 		'rear-nonsticky t
 		'read-only t
@@ -139,13 +139,13 @@ QUERY is list of search terms."
   "List all files currently in index."
   (dolist (file *ir-hashes*)
     (let ((file-path (get-ir-file-name file)))
-      (if (file-exists-p file-path)
-	  (insert "\n" (make-link file-path 'ir-lm-jump-to-result
-				  file-path 1 nil
-				  (get-ir-file-encoding file))
-		  (format " [%d]"
-			  (ir-file-words (get-ir-file-paragraphs
-					  file))))))))
+      (when (file-exists-p file-path)
+	(insert "\n" (make-link file-path 'ir-lm-jump-to-result
+				file-path 1 nil
+				(get-ir-file-encoding file))
+		(format " [%d]"
+			(ir-file-words (get-ir-file-paragraphs
+					file))))))))
 
 (defun ir-refresh-view ()
   "Refresh file names in current index."
@@ -177,10 +177,10 @@ QUERY is list of search terms."
   "Set NEW value of the `lambda' parameter."
   (interactive
    (list (read-number "New value for lambda (0 < lambda < 1) = ")))
-  (if (and (> new 0) (< new 1))
-      (progn (setq *ir-lm-lambda* new)
-	     (ir-refresh-view))
-    (message "Incorrect value for lambda.")))
+  (if (or (<= new 0) (>= new 1))
+      (message "Incorrect value for lambda.")
+    (setq *ir-lm-lambda* new)
+    (ir-refresh-view)))
 
 (defun ir-change-stem-level (new)
   "Set NEW value of the stemming parameter."
@@ -216,11 +216,11 @@ If ALL is non-nil - ask to clear words' cache as well."
 	*ir-words-count* 0
 	*ir-global-hash* nil)
   (when all
-    (if (and (or *ir-word-cache* *ir-stem* *ir-stop*)
-	     (y-or-n-p "Clear auxiliary caches as well? "))
-	(setq *ir-stop* nil
-	      *ir-stem* nil
-	      *ir-word-cache* nil))
+    (and (or *ir-word-cache* *ir-stem* *ir-stop*)
+	 (y-or-n-p "Clear auxiliary caches as well? ")
+	 (setq *ir-stop* nil
+	       *ir-stem* nil
+	       *ir-word-cache* nil))
     (message "Index cleared.")
     (ir-refresh-view))
   (garbage-collect))
@@ -234,8 +234,8 @@ If ALL is non-nil - ask to clear words' cache as well."
   "Return first item that satisfies FN in LST.  Nil if no such."
   (catch 'out
     (dolist (item lst)
-      (if (funcall fn item)
-	  (throw 'out item)))))
+      (when (funcall fn item)
+	(throw 'out item)))))
 
 (defun delete-fn (lst fn)
   "Destructively delete first element of LST for which FN is non-nil."
@@ -254,17 +254,17 @@ If ALL is non-nil - ask to clear words' cache as well."
 
 (defun get-next-word ()
   "Get next word (including hyphens and carrige return) after position."
-  (if (forward-word)
-      (let ((word (current-word t t)))
-	(while (equal (char-to-string (following-char)) "-")
-	  (if (forward-word)
-	      (setq word (concat word
-				 (if (equal (char-to-string
-					     (following-char)) "\n")
-				     ""
-				   "-")
-				 (current-word t t)))))
-	word)))
+  (when (forward-word)
+    (let ((word (current-word t t)))
+      (while (equal (char-to-string (following-char)) "-")
+	(when (forward-word)
+	  (setq word (concat word
+			     (if (equal (char-to-string
+					 (following-char)) "\n")
+				 ""
+			       "-")
+			     (current-word t t)))))
+      word)))
 
 (defmacro dowords (vars &rest body)
   "Bind VARS to consecutive words and execute BODY."
@@ -296,12 +296,12 @@ If ALL is non-nil - ask to clear words' cache as well."
 
 (defun filter-name (file-name patterns)
   "Check whether FILE-NAME is fully matched by any of the PATTERNS."
-  (if patterns
-      (let ((match (string-match (car patterns) file-name)))
-	(if (and match
-		 (= 0 match))
-	    t
-	  (filter-name file-name (cdr patterns))))))
+  (when patterns
+    (let ((match (string-match (car patterns) file-name)))
+      (if (and match
+	       (= 0 match))
+	  t
+	(filter-name file-name (cdr patterns))))))
 
 (defun maprdir (fn dir &optional file-types subdir-p)
   "Apply FN over all files in DIR and its subdirectories.
@@ -309,18 +309,18 @@ FILE-TYPES determines file name patterns for calling FN upon.
 Default is all files.  If SUBDIR-P is nil,
 we are in the top level directory, otherwize we are lower.
 This is used when recursing, when calling, should be nil."
-  (unless subdir-p		 ;executed only once, in top directory
-    (setq file-types (mapcar 'glob-to-regex
-			     (split-string (or file-types
-					       "*") nil t))))
+  (or subdir-p		 ;executed only once, in top directory
+      (setq file-types (mapcar 'glob-to-regex
+			       (split-string (or file-types
+						 "*") nil t))))
   (dolist (file (directory-files dir))
     (let ((file-full (concat dir file)))
-      (if (and (not (equal "." file))
-	       (not (equal ".." file)))
+      (or (equal "." file)
+	  (equal ".." file)
 	  (if (file-directory-p file-full)
 	      (maprdir fn (concat file-full "/") file-types t)
-	    (if (filter-name file file-types)
-		(funcall fn file-full)))))))
+	    (when (filter-name file file-types)
+	      (funcall fn file-full)))))))
 
 (defun inc-hash-value (key h-table &optional value)
   "Increment value for KEY in H-TABLE with VALUE.
@@ -365,7 +365,7 @@ return the newly created one."
 		(inc-hash-value key h-table val)))
 	  (dolist (cell a-list h-table)
 	    (inc-hash-value (car cell) h-table (cdr cell)))))
-    (if (null *ir-global-hash*)	;else use global, return nil
+    (or *ir-global-hash*		;else use global, return nil
 	(setq *ir-global-hash* (make-hash-table
 				:test 'equal :size size)))
     (if parent-hash-p
@@ -389,10 +389,10 @@ return the newly created one."
 	      (dotimes (i (length suffix) word)
 		(let ((stem-suf (gethash (substring suffix i)
 					 *ir-stem* nil)))
-		  (if stem-suf
-		      (throw 'out (concat prefix
-					  (substring suffix 0 i)
-					  stem-suf))))))
+		  (when stem-suf
+		    (throw 'out (concat prefix
+					(substring suffix 0 i)
+					stem-suf))))))
 	  word))
     word))
 
@@ -437,7 +437,7 @@ If no such is found, process and cache."
     (or hash-check
 	(setq hash-check
 	      (puthash word (ir-process-new-word word) *ir-word-cache*)))
-    (if (not (equal "" hash-check)) hash-check))) ;if not a stop word
+    (or (equal "" hash-check) hash-check))) ;if not a stop word
 
 (defun ir-load-stop-words (file)
   "Load stop-words from FILE to the global hash *ir-stop*."
@@ -455,9 +455,9 @@ If no such is found, process and cache."
 ;;     (dowords (w1 w2 w3)		;does not byte compile!
 ;; 	     (when w3
 ;; 	       (setq w3 (car (read-from-string w3)))
-;; 	       (if (and (numberp w3)
-;; 			(>= w3 *ir-stem-level*))
-;; 		   (puthash w1 w2 *ir-stem*))))))
+;; 	       (and (numberp w3)
+;; 		    (>= w3 *ir-stem-level*)
+;; 		    (puthash w1 w2 *ir-stem*))))))
 
 (defun ir-load-stemmer (file)
   "Load stem entries from FILE to the global hash *ir-stem*."
@@ -469,24 +469,25 @@ If no such is found, process and cache."
 		   (w3 (get-next-word)))
 	       (when w3
 		 (setq w3 (car (read-from-string w3)))
-		 (if (and (numberp w3)
-			  (>= w3 *ir-stem-level*))
-		     (puthash w1 w2 *ir-stem*)))))))
+		 (and (numberp w3)
+		      (>= w3 *ir-stem-level*)
+		      (puthash w1 w2 *ir-stem*)))))))
 
 (defun ir-load-auxiliary (&optional force)
   "Load auxiliary files to hashes if not already done.
 When FORCE is non-nil, re-fill."
   (message "Loading auxiliary hashes...")
   (let ((stop-dir (concat *ir-dir* "stop-words/")))
-    (if (file-exists-p stop-dir)
-	(when (or force
-		  (null *ir-stop*))
-	  (setq *ir-stop* (make-hash-table :test 'equal :size 300))
-	  (maprdir 'ir-load-stop-words stop-dir))))
+    (when (and (file-exists-p stop-dir)
+	       (or force
+		   (null *ir-stop*)))
+      (setq *ir-stop* (make-hash-table :test 'equal :size 300))
+      (maprdir 'ir-load-stop-words stop-dir)))
   (let ((stem-dir (concat *ir-dir* "stem-rules/")))
     (if (file-exists-p stem-dir)
-	(when (or force
-		  (null *ir-stem*))
+	(when (and (file-exists-p stem-dir)
+		   (or force
+		       (null *ir-stop*)))
 	  (setq *ir-stem* (make-hash-table :test 'equal :size 130514))
 	  (maprdir 'ir-load-stemmer stem-dir))))
   (fset 'ir-process-new-word
@@ -508,7 +509,7 @@ Beware, only usefull in `ir-lm-extract-words'."
      (setq *ir-total-count*	;if paragraph is too short, discard
 	   (- *ir-total-count* paragraph-total-count))
      (maphash (lambda (wrd cnt)	;and remove word counts
-		(if (not (inc-hash-value wrd *ir-global-hash* (- cnt)))
+		(or (inc-hash-value wrd *ir-global-hash* (- cnt))
 		    (setq *ir-words-count* (1- *ir-words-count*))))
 	      paragraph)))
 
@@ -535,22 +536,22 @@ Save ENCODING for further operations."
 	       (when word
 		 (setq paragraph-total-count (1+ paragraph-total-count)
 		       *ir-total-count* (1+ *ir-total-count*))
-		 (if (= 1 (inc-hash-value word paragraph)) ;new paragraph word
-		     (setq paragraph-words-count (1+ paragraph-words-count)))
-		 (if (= 1 (inc-hash-value word *ir-global-hash*)) ;new global word
-		     (setq *ir-words-count* (1+ *ir-words-count*))))
+		 (when (= 1 (inc-hash-value word paragraph)) ;new paragraph word
+		   (setq paragraph-words-count (1+ paragraph-words-count)))
+		 (when (= 1 (inc-hash-value word *ir-global-hash*)) ;new global word
+		   (setq *ir-words-count* (1+ *ir-words-count*))))
 	       (setq prev curr)))
     (kill-buffer (current-buffer))
     (assess-paragraph)
-    (if acc (push (nreverse acc) *ir-hashes*))))
+    (when acc (push (nreverse acc) *ir-hashes*))))
 
 (defun ir-remove-post (post &optional save-globals-p)
   "Subtract from global words hash key-values corresponding in POST.
 SAVE-GLOBALS-P determines whether global indexes shouldn't be touched."
   (setq *ir-total-count* (- *ir-total-count* (cadr post)))
   (maphash (lambda (key val)
-	     (if (and (not (inc-hash-value key *ir-global-hash* (- val)))
-		      (not save-globals-p))
+	     (or (inc-hash-value key *ir-global-hash* (- val))
+		 save-globals-p
 		 (setq *ir-words-count* (1- *ir-words-count*))))
 	   (get-ir-paragraph-hash post)))
 
@@ -615,10 +616,10 @@ If APPEND-P is non-nil, merge to the current index."
    (list
     (read-directory-name "Top directory: " nil default-directory t)
     (read-string "File names to be indexed: " "*.txt" nil "*.txt")
-    (if (not (y-or-n-p "Use default encoding? "))
-	(read-coding-system "Choose encoding: " 'cp1251))
-    (if *ir-global-hash*
-	(y-or-n-p "Add to existing configuration? "))))
+    (unless (y-or-n-p "Use default encoding? ")
+      (read-coding-system "Choose encoding: " 'cp1251))
+    (when *ir-global-hash*
+      (y-or-n-p "Add to existing configuration? "))))
   (or *ir-global-hash*
       (setq append-p nil))
   (or *ir-word-cache*
@@ -649,9 +650,9 @@ INC-GLOBALS-P determines whether global word counts should be adjusted."
 				       subpost))
 			 (index-words (get-ir-paragraph-distinct-words
 				       subpost)))
-		     (if inc-globals-p
-			 (setq *ir-total-count*
-			       (+ *ir-total-count* total-words)))
+		     (when inc-globals-p
+		       (setq *ir-total-count*
+			     (+ *ir-total-count* total-words)))
 		     (list (get-ir-paragraph-point subpost)
 			   total-words index-words
 			   (ir-assoc-to-hash (cdddr subpost) index-words
@@ -676,8 +677,8 @@ INC-GLOBALS-P determines whether global word counts should be adjusted."
 					;discard posting and remove existing from *ir-hashes*
 	  (ir-remove-postings file-path (not inc-globals-p)) ;housekeeping
 	  nil)
-      (if (file-exists-p file-path)	;load only existing files
-	  (ir-lm-get-file-posting post inc-globals-p)))))
+      (when (file-exists-p file-path)	;load only existing files
+	(ir-lm-get-file-posting post inc-globals-p)))))
 
 (defun ir-lm-load-index-from-file (file)
   "Load existing index from FILE."
@@ -685,14 +686,14 @@ INC-GLOBALS-P determines whether global word counts should be adjusted."
     (insert-file-contents file)
     (goto-char (point-min))
     (let ((not-inc-globals-p (null *ir-global-hash*)))
-      (if not-inc-globals-p ;need global hash from file only if current is cleared
-	  (let ((global-hash (read-from-whole-string
-			      (buffer-substring-no-properties
-			       (line-beginning-position)
-			       (line-end-position)))))
-	    (setq *ir-total-count* (car global-hash)
-		  *ir-words-count* (cadr global-hash))
-	    (ir-assoc-to-hash (cddr global-hash) *ir-words-count* t)))
+      (when not-inc-globals-p ;need global hash from file only if current is cleared
+	(let ((global-hash (read-from-whole-string
+			    (buffer-substring-no-properties
+			     (line-beginning-position)
+			     (line-end-position)))))
+	  (setq *ir-total-count* (car global-hash)
+		*ir-words-count* (cadr global-hash))
+	  (ir-assoc-to-hash (cddr global-hash) *ir-words-count* t)))
       (let ((point-max (point-max)))
 	(while (and (= 0 (forward-line 1))
 		    (< (point) point-max))
@@ -702,7 +703,7 @@ INC-GLOBALS-P determines whether global word counts should be adjusted."
 			      (line-beginning-position)
 			      (line-end-position)))
 			    (not not-inc-globals-p))))
-	    (if file-sexp (push file-sexp *ir-hashes*))))))
+	    (when file-sexp (push file-sexp *ir-hashes*))))))
     (kill-buffer (current-buffer))))
 
 (defun ir-lm-load-index (file &optional append-p)
@@ -711,12 +712,12 @@ If APPEND-P is non-nil, keep previous index loaded as well."
   (interactive
    (list (read-file-name "Index file: " nil
 			 ".irlm" nil ".irlm")
-	 (if *ir-global-hash*
-	     (y-or-n-p
-	      "Add to existing configuration or overwrite? "))))
+	 (when *ir-global-hash*
+	   (y-or-n-p
+	    "Add to existing configuration or overwrite? "))))
   (when (file-exists-p file)
-    (if (not (and *ir-global-hash*
-		  append-p))
+    (or (and *ir-global-hash*
+	     append-p)
 	(ir-clear))
     (ir-load-auxiliary)
     (message "Loading...")
@@ -784,8 +785,8 @@ LAMBDA is LM parameter between 0 and 1."
       (while (> cnt place)
 	(aset best cnt (aref best (1- cnt)))
 	(setq cnt (1- cnt)))
-      (if (>= cnt place)
-	  (aset best place new))))
+      (when (>= cnt place)
+	(aset best place new))))
   best)
 
 (defun ir-lm-get-best-scores (query cnt)
@@ -795,21 +796,21 @@ Return vector of vectors with info for best paragraphs."
 	(min-score (ir-lm-posting-min-score query *ir-lm-lambda*)))
     (dolist (file *ir-hashes*)
       (let ((file-path (get-ir-file-name file)))
-	(if (file-exists-p file-path)
-	    (dolist (post (get-ir-file-paragraphs file))
-	      (let ((score
-		     (ir-lm-posting-score (get-ir-paragraph-hash post)
-					  (get-ir-paragraph-total-words
-					   post)
-					  query
-					  *ir-lm-lambda*)))
-		(if (> score min-score)
-		    (setq best
-			  (ir-lm-insert-post
-			   (vector score file-path
-				   (get-ir-paragraph-point post)
-				   (get-ir-file-encoding file))
-			   best (1- cnt)))))))))
+	(when (file-exists-p file-path)
+	  (dolist (post (get-ir-file-paragraphs file))
+	    (let ((score
+		   (ir-lm-posting-score (get-ir-paragraph-hash post)
+					(get-ir-paragraph-total-words
+					 post)
+					query
+					*ir-lm-lambda*)))
+	      (when (> score min-score)
+		(setq best
+		      (ir-lm-insert-post
+		       (vector score file-path
+			       (get-ir-paragraph-point post)
+			       (get-ir-file-encoding file))
+		       best (1- cnt)))))))))
     best))
 
 (defun highlight-search (pos query)
@@ -818,10 +819,10 @@ Return vector of vectors with info for best paragraphs."
     (let ((prev pos))
       (dowords word
 	       (let ((curr (point)))
-		 (if (string-match "\n.*\n" ;detect just ended paragraph
-				   (buffer-substring-no-properties
-				    prev curr))
-		     (throw 'out nil))
+		 (when (string-match "\n.*\n" ;detect just ended paragraph
+				     (buffer-substring-no-properties
+				      prev curr))
+		   (throw 'out nil))
 		 (when (member (ir-process-word (downcase word))
 			       query)
 		   (delete-char (- (length word)))
@@ -855,8 +856,8 @@ QUERY is list of current search terms."
   "Insert in current buffer BEST results.
 QUERY is list of current search terms."
   (mapc (lambda (post)
-	  (let ((file (aref post 1))
-		(score (aref post 0))
+	  (let ((score (aref post 0))
+		(file (aref post 1))
 		(marker (aref post 2))
 		(encoding (aref post 3))
 		(preview ""))
@@ -936,47 +937,48 @@ QUERY is list of current search terms."
   (let ((ir-buffer (get-buffer-create "*Information retrieval*")))
     (set-buffer ir-buffer)
     (switch-to-buffer ir-buffer)
-    (insert (propertize "Information Retrieval - Basic Mixed Language Model"
-			'face '((:foreground "green") (:underline t)))
-	    "\n\nOptions:\n"
-	    (make-link "i -> index new directory"
-		       'ir-lm-index)
-	    "\n"
-	    (make-link "l -> load existing index from file"
-		       'ir-lm-load-index)
-	    "\n"
-	    (make-link "w -> write current index\(es\) to file"
-		       'ir-lm-write-index)
-	    "\n"
-	    (make-link "f -> search in current loaded index\(es\)"
-		       'ir-lm-search)
-	    "\n"
-	    (make-link "c -> clear current index\(es\)"
-		       'ir-clear)
-	    "\n"
-	    (make-link "m -> change maximum search results"
-		       'ir-lm-change-max-results)
-	    "\n"
-	    (make-link "p -> change minimum number of words in paragraph"
-		       'ir-lm-change-min-words)
-	    "\n"
-	    (make-link "b -> change lambda"
-		       'ir-lm-change-lambda)
-	    "\n"
-	    (make-link "s -> change stemming level"
-		       'ir-change-stem-level)
-	    "\n"
-	    (make-link "q -> quit \(without clearing\)"
-		       (lambda () (interactive) (kill-buffer)))
-	    "\n\n"
-	    "maximum results = " (format "%d\n" *ir-max-results*)
-	    "minimum number of words in paragraph = "
-	    (format "%d\n" *ir-lm-min-words*)
-	    "lambda = " (format "%f\n" *ir-lm-lambda*)
-	    "stemming level = " (format "%d\n" *ir-stem-level*)
-	    "total words in texts = " (format "%d\n" *ir-total-count*)
-	    "words in index = " (format "%d\n" *ir-words-count*)
-	    "Currently indexed files [total words]:\n")
+    (insert
+     (propertize "Information Retrieval - Basic Mixed Language Model"
+		 'face '((:foreground "green") (:underline t)))
+     "\n\nOptions:\n"
+     (make-link "i -> index new directory"
+		'ir-lm-index)
+     "\n"
+     (make-link "l -> load existing index from file"
+		'ir-lm-load-index)
+     "\n"
+     (make-link "w -> write current index\(es\) to file"
+		'ir-lm-write-index)
+     "\n"
+     (make-link "f -> search in current loaded index\(es\)"
+		'ir-lm-search)
+     "\n"
+     (make-link "c -> clear current index\(es\)"
+		'ir-clear)
+     "\n"
+     (make-link "m -> change maximum search results"
+		'ir-lm-change-max-results)
+     "\n"
+     (make-link "p -> change minimum number of words in paragraph"
+		'ir-lm-change-min-words)
+     "\n"
+     (make-link "b -> change lambda"
+		'ir-lm-change-lambda)
+     "\n"
+     (make-link "s -> change stemming level"
+		'ir-change-stem-level)
+     "\n"
+     (make-link "q -> quit \(without clearing\)"
+		(lambda () (interactive) (kill-buffer)))
+     "\n\n"
+     "maximum results = " (format "%d\n" *ir-max-results*)
+     "minimum number of words in paragraph = "
+     (format "%d\n" *ir-lm-min-words*)
+     "lambda = " (format "%f\n" *ir-lm-lambda*)
+     "stemming level = " (format "%d\n" *ir-stem-level*)
+     "total words in texts = " (format "%d\n" *ir-total-count*)
+     "words in index = " (format "%d\n" *ir-words-count*)
+     "Currently indexed files [total words]:\n")
     (ir-lm-set-keys)
     (ir-list-index)
     (setq buffer-read-only t)

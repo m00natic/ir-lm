@@ -5,7 +5,7 @@ Paragraphs are assumed to be separated by a blank line.  The formula
 used for sorting relevance is:
 P(w|p) = lambda*P(w|Mp) + (1 - lambda)*P(w|Mc)
 where Mp is probabilities model for a paragraph, Mc - probabilities
-model for the whole collection and 0 < lambda <= 1.
+model for the whole collection and 0 < lambda < 1.
 It's only been tested on cvs version of GNU/Emacs 23.1.50 onwards.
 
 Files:
@@ -72,7 +72,7 @@ auxiliary hashes, stop-words and stem-rules have been cleared or not
 yet loaded).
 
 ir-lm-change-max-results
-Changes maximum number of search results showed.
+Changes maximum number of search results showed (defaults to 30).
 
 ir-lm-change-min-words
 Changes the minimum number of words needed for a paragraph to be
