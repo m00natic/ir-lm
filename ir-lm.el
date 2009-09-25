@@ -581,7 +581,7 @@ If ENCODING is nil, use default encoding when loading FILE."
 
 (defun print-posting (lst)
   "Get printed representation for posting for paragraph LST."
-  (princ "\n" (current-buffer))
+  (princ "\n")
   (prin1 (nconc (list (get-ir-file-name lst)
 		      (get-ir-file-encoding lst)
 		      (get-ir-file-time lst))
@@ -592,8 +592,7 @@ If ENCODING is nil, use default encoding when loading FILE."
 				 (get-ir-paragraph-distinct-words sublst))
 			   (hash-to-assoc (get-ir-paragraph-hash
 					   sublst))))
-			(get-ir-file-paragraphs lst)))
-	 (current-buffer)))
+			(get-ir-file-paragraphs lst)))))
 
 (defun ir-lm-write-index (file)
   "Write current index info to FILE."
