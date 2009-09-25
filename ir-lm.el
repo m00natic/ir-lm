@@ -603,8 +603,7 @@ If ENCODING is nil, use default encoding when loading FILE."
   (message "Writing...")
   (with-temp-file file
     (prin1 (nconc (list *ir-total-count* *ir-words-count*) ;firstly write the global hash
-		  (hash-to-assoc *ir-global-hash*))
-	   (current-buffer))
+		  (hash-to-assoc *ir-global-hash*)))
     (mapc 'print-posting *ir-hashes*))	;write all postings
   (message "Index written."))
 
