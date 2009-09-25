@@ -499,51 +499,52 @@ When FORCE is non-nil, re-fill."
 ;;;; File processing
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defmacro assess-paragraph ()
-  "Assess paragraph during word search.
-Beware, only usefull in `ir-lm-extract-words'."
-  `(if (>= paragraph-total-count *ir-lm-min-words*)
-       (push (list paragraph-start paragraph-total-count
-		   paragraph-words-count paragraph)
-	     acc)
-     (setq *ir-total-count*	;if paragraph is too short, discard
-	   (- *ir-total-count* paragraph-total-count))
-     (maphash (lambda (wrd cnt)	;and remove word counts
-		(or (inc-hash-value wrd *ir-global-hash* (- cnt))
-		    (setq *ir-words-count* (1- *ir-words-count*))))
-	      paragraph)))
-
 (defun ir-lm-extract-words (full-file-name &optional encoding)
   "Process paragraphs of current buffer holding FULL-FILE-NAME.
 Save ENCODING for further operations."
-  (let* ((prev (point-min))
-	 (paragraph-start prev)
-	 (paragraph-total-count 0)
-	 (paragraph-words-count 0)
-	 (paragraph (make-hash-table :test 'equal))
-	 (acc (list (current-time) encoding full-file-name)))
-    (goto-char prev)
-    (dowords word
-	     (setq word (ir-process-word (downcase word)))
-	     (let ((curr (line-beginning-position)))
-	       (when (string-match "\n.*\n" ;detect just ended paragraph
-				   (buffer-substring-no-properties prev curr))
-		 (assess-paragraph)
-		 (setq paragraph (make-hash-table :test 'equal)
-		       paragraph-total-count 0
-		       paragraph-words-count 0
-		       paragraph-start curr))
-	       (when word
-		 (setq paragraph-total-count (1+ paragraph-total-count)
-		       *ir-total-count* (1+ *ir-total-count*))
-		 (when (= 1 (inc-hash-value word paragraph)) ;new paragraph word
-		   (setq paragraph-words-count (1+ paragraph-words-count)))
-		 (when (= 1 (inc-hash-value word *ir-global-hash*)) ;new global word
-		   (setq *ir-words-count* (1+ *ir-words-count*))))
-	       (setq prev curr)))
-    (kill-buffer (current-buffer))
-    (assess-paragraph)
-    (when acc (push (nreverse acc) *ir-hashes*))))
+  (macrolet ((assess-paragraph
+	      ()
+	      `(if (>= paragraph-total-count *ir-lm-min-words*)
+		   (push (list paragraph-start paragraph-total-count
+			       paragraph-words-count paragraph)
+			 acc)
+		 (setq *ir-total-count*	;if paragraph is too short, discard
+		       (- *ir-total-count* paragraph-total-count))
+		 (maphash (lambda (wrd cnt)	;and remove word counts
+			    (or (inc-hash-value wrd *ir-global-hash*
+						(- cnt))
+				(setq *ir-words-count*
+				      (1- *ir-words-count*))))
+			  paragraph))))
+    (let* ((prev (point-min))
+	   (paragraph-start prev)
+	   (paragraph-total-count 0)
+	   (paragraph-words-count 0)
+	   (paragraph (make-hash-table :test 'equal))
+	   (acc (list (current-time) encoding full-file-name)))
+      (goto-char prev)
+      (dowords word
+	       (setq word (ir-process-word (downcase word)))
+	       (let ((curr (line-beginning-position)))
+		 (when (string-match "\n.*\n" ;detect just ended paragraph
+				     (buffer-substring-no-properties
+				      prev curr))
+		   (assess-paragraph)
+		   (setq paragraph (make-hash-table :test 'equal)
+			 paragraph-total-count 0
+			 paragraph-words-count 0
+			 paragraph-start curr))
+		 (when word
+		   (setq paragraph-total-count (1+ paragraph-total-count)
+			 *ir-total-count* (1+ *ir-total-count*))
+		   (when (= 1 (inc-hash-value word paragraph)) ;new paragraph word
+		     (setq paragraph-words-count (1+ paragraph-words-count)))
+		   (when (= 1 (inc-hash-value word *ir-global-hash*)) ;new global word
+		     (setq *ir-words-count* (1+ *ir-words-count*))))
+		 (setq prev curr)))
+      (kill-buffer (current-buffer))
+      (assess-paragraph)
+      (when acc (push (nreverse acc) *ir-hashes*)))))
 
 (defun ir-remove-post (post &optional save-globals-p)
   "Subtract from global words hash key-values corresponding in POST.
