@@ -6,48 +6,46 @@
 
 ;;; History:
 ;; 5.VIII.2009 - Version 1.8
-					; Abstracting away file-postings
-					;  structure
+;; Abstracting away file-postings
+;;  structure
 ;; 31.VII.2009 - Version 1.7
-					; Generating word processing function
-					;  on the fly, thus optimizing
-					;  depending on whether stop words or
-					;  stemmer are loaded
+;; Generating word processing function
+;;  on the fly, thus optimizing
+;;  depending on whether stop words or
+;;  stemmer are loaded
 ;; 18.VII.2009 - Version 1.6
-					; highlighting of search words
-					; minor bugfixes
+;; highlighting of search words
+;; minor bugfixes;
 ;; 15.VII.2009 - Version 1.5
-					; bulgarian stemmer added
-					; stop-word and stemmer files
-					;  are now stored in separate directories
-					;  which are recursively processed
-					; added stemming parameter
-					; many corrections in merging
+;; bulgarian stemmer added
+;; stop-word and stemmer files are now stored in separate directories
+;;  which are recursively processed
+;; added stemming parameter
+;; many corrections in merging
 ;; 14.VII.2009 - Version 1.4
-					; correctly merge postings and info
-					;  on load or index (no duplicates,
-					;  no loading of older than index files)
-					; added globs for filtering file types
+;; correctly merge postings and info
+;;  on load or index (no duplicates,
+;;  no loading of older than index files)
+;; added globs for filtering file types
 ;; 13.VII.2009 - Version 1.3
-					; remembering encoding for individual files
-					; prune non-existing files on load
+;; remembering encoding for individual files
+;; prune non-existing files on load
 ;; 12.VII.2009 - Version 1.2
-					; new command `ir-lm' giving a unified
-					;  interface of files and commands
-					; command to change lambda
-					; full cleaning of data
-					; minor bugfixes
+;; new command `ir-lm' giving a unified
+;;  interface of files and commands
+;; command to change lambda
+;; full cleaning of data
+;; minor bugfixes
 ;; 10.VII.2009 - Version 1.1
-					; added minumim possible score for query
-					;  so that irrelevant results are discarded
-					; a bit of code refactoring and cleaning
+;; added minumim possible score for query
+;;  so that irrelevant results are discarded
+;; a bit of code refactoring and cleaning
 
 ;; 09.VII.2009 - Version 1.0
 
 ;;; Code:
 (defconst *ir-dir*
-  (if (or (eq system-type 'windows-nt)
-	  (eq system-type 'ms-dos))
+  (if (or (eq system-type 'windows-nt) (eq system-type 'ms-dos))
       "C:/ir/"
     "~/.ir/")
   "Directory for auxiliary files.")
@@ -92,16 +90,16 @@ Do not use symbol `bla-arg' in the body.")
 
 (make-ir-file-getter name (car ir-file))
 (make-ir-file-getter encoding (cadr ir-file))
-(make-ir-file-getter time (caddr ir-file))
-(make-ir-file-getter paragraphs (cdddr ir-file))
+(make-ir-file-getter time (car (cddr ir-file)))
+(make-ir-file-getter paragraphs (cdr (cddr ir-file)))
 
 ;; getters for paragraph structures
 (make-getter ir-paragraph)
 
 (make-ir-paragraph-getter point (car ir-paragraph))
 (make-ir-paragraph-getter total-words (cadr ir-paragraph))
-(make-ir-paragraph-getter distinct-words (caddr ir-paragraph))
-(make-ir-paragraph-getter hash (cadddr ir-paragraph))
+(make-ir-paragraph-getter distinct-words (car (cddr ir-paragraph)))
+(make-ir-paragraph-getter hash (cadr (cddr ir-paragraph)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -484,29 +482,28 @@ When FORCE is non-nil, re-fill."
 ;;;; File processing
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defmacro assess-paragraph ()
+  "Remove a bit of boiler-plate from `ir-lm-extract-words'."
+  '(if (>= paragraph-total-count *ir-lm-min-words*)
+       (push (list paragraph-start paragraph-total-count
+		   paragraph-words-count paragraph)
+	     acc)
+     (setq *ir-total-count*	   ;if paragraph is too short, discard
+	   (- *ir-total-count* paragraph-total-count))
+     (maphash (lambda (wrd cnt)		;and remove word counts
+		(or (inc-hash-value wrd *ir-global-hash* (- cnt))
+		    (setq *ir-words-count* (1- *ir-words-count*))))
+	      paragraph)))
+
 (defun ir-lm-extract-words (full-file-name &optional encoding)
   "Process paragraphs of current buffer holding FULL-FILE-NAME.
 Save ENCODING for further operations."
-  (macrolet ((assess-paragraph
-	      ()
-	      `(if (>= paragraph-total-count *ir-lm-min-words*)
-		   (push (list paragraph-start paragraph-total-count
-			       paragraph-words-count paragraph)
-			 acc)
-		 (setq *ir-total-count*	;if paragraph is too short, discard
-		       (- *ir-total-count* paragraph-total-count))
-		 (maphash (lambda (wrd cnt)	;and remove word counts
-			    (or (inc-hash-value wrd *ir-global-hash*
-						(- cnt))
-				(setq *ir-words-count*
-				      (1- *ir-words-count*))))
-			  paragraph))))
-    (let* ((prev (point-min))
-	   (paragraph-start prev)
-	   (paragraph-total-count 0)
-	   (paragraph-words-count 0)
-	   (paragraph (make-hash-table :test 'equal))
-	   (acc (list (current-time) encoding full-file-name)))
+  (let ((prev (point-min))
+	(acc (list (current-time) encoding full-file-name)))
+    (let ((paragraph-start prev)
+	  (paragraph-total-count 0)
+	  (paragraph-words-count 0)
+	  (paragraph (make-hash-table :test 'equal)))
       (goto-char prev)
       (dowords word
 	       (setq word (ir-process-word (downcase word)))
@@ -530,8 +527,8 @@ Save ENCODING for further operations."
 		     (setq *ir-words-count* (1+ *ir-words-count*))))
 		 (setq prev curr)))
       (kill-buffer (current-buffer))
-      (assess-paragraph)
-      (when acc (push (nreverse acc) *ir-hashes*)))))
+      (assess-paragraph))
+    (when acc (push (nreverse acc) *ir-hashes*))))
 
 (defun ir-remove-post (post &optional save-globals-p)
   "Subtract from global words hash key-values corresponding in POST.
@@ -645,7 +642,7 @@ INC-GLOBALS-P determines whether global word counts should be adjusted."
 			     (+ *ir-total-count* total-words)))
 		     (list (ir-paragraph-point subpost)
 			   total-words index-words
-			   (ir-assoc-to-hash (cdddr subpost)
+			   (ir-assoc-to-hash (cdr (cddr subpost))
 					     index-words nil
 					     inc-globals-p))))
 		 (ir-file-paragraphs post))))
@@ -665,7 +662,7 @@ INC-GLOBALS-P determines whether global word counts should be adjusted."
 			       (ir-file-time post)) ;if post is newer
 	      (ir-remove-postings file-path (not inc-globals-p)) ;remove old posting from *ir-hashes*
 	      (ir-lm-get-file-posting post inc-globals-p))
-					;discard posting and remove existing from *ir-hashes*
+	  ;;discard posting and remove existing from *ir-hashes*
 	  (ir-remove-postings file-path (not inc-globals-p)) ;housekeeping
 	  nil)
       (when (file-exists-p file-path)	;load only existing files
