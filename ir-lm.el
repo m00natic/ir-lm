@@ -45,9 +45,10 @@
 
 ;;; Code:
 (defconst *ir-dir*
-  (if (or (eq system-type 'windows-nt) (eq system-type 'ms-dos))
-      "C:/ir/"
-    "~/.ir/")
+  (eval-when-compile
+    (if (or (eq system-type 'windows-nt) (eq system-type 'ms-dos))
+	"C:/ir/"
+      "~/.ir/"))
   "Directory for auxiliary files.")
 
 ;; *ir-hashes* structure is ((file-path encoding time (point-in-file total-words-in-paragraph
@@ -59,10 +60,40 @@
 (defvar *ir-word-cache* nil "Cache of raw word -> transformation.")
 (defvar *ir-stop* nil "Hash table of stop words.")
 (defvar *ir-stem* nil "Hash table of stemmer.")
-(defvar *ir-lm-lambda* 0.5 "Parameter in the mixed language model.")
-(defvar *ir-max-results* 30 "Maximum number of search results.")
-(defvar *ir-stem-level* 1 "Stemming level.")
-(defvar *ir-lm-min-words* 20 "Minimal number of words in paragraph.")
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Customization
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;###autoload
+(defgroup ir-lm nil
+  "Basic mixed language model for information retrieval mode."
+  :group 'applications)
+
+;;;###autoload
+(defcustom ir-lm-lambda 0.5
+  "Lambda parameter in the mixed language model."
+  :group 'ir-lm
+  :type 'number)
+
+;;;###autoload
+(defcustom ir-lm-max-results 30
+  "Maximum number of search results."
+  :group 'ir-lm
+  :type 'integer)
+
+;;;###autoload
+(defcustom ir-lm-stem-level 1
+  "Stemming level."
+  :group 'ir-lm
+  :type 'integer)
+
+;;;###autoload
+(defcustom ir-lm-min-words 20
+  "Minimal number of words in paragraph."
+  :group 'ir-lm
+  :type 'integer)
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -155,11 +186,11 @@ QUERY is list of search terms."
 	(forward-line 5)
 	(delete-region start (line-end-position)))
       (insert
-       "maximum results = " (format "%d\n" *ir-max-results*)
+       "maximum results = " (format "%d\n" ir-lm-max-results)
        "minimum number of words in paragraph = "
-       (format "%d\n" *ir-lm-min-words*)
-       "lambda = " (format "%f\n" *ir-lm-lambda*)
-       "stemming level = " (format "%d\n" *ir-stem-level*)
+       (format "%d\n" ir-lm-min-words)
+       "lambda = " (format "%f\n" ir-lm-lambda)
+       "stemming level = " (format "%d\n" ir-lm-stem-level)
        "total words in texts = " (format "%d\n" *ir-total-count*)
        "words in index = " (format "%d" *ir-words-count*))
       (forward-line 2)
@@ -170,37 +201,41 @@ QUERY is list of search terms."
       (goto-char (point-min))
       (forward-line 3))))
 
-(defun ir-lm-change-lambda (new)
+(defun ir-lm-change-lambda (symbol new)
   "Set NEW value of the `lambda' parameter."
   (interactive
-   (list (read-number "New value for lambda (0 < lambda < 1) = ")))
+   (list 'ir-lm-lambda
+	 (read-number "New value for lambda (0 < lambda < 1) = ")))
   (if (or (<= new 0) (>= new 1))
       (message "Incorrect value for lambda.")
-    (setq *ir-lm-lambda* new)
+    (set-default symbol new)
     (ir-refresh-view)))
 
-(defun ir-change-stem-level (new)
+(defun ir-lm-change-stem-level (symbol new)
   "Set NEW value of the stemming parameter."
   (interactive
-   (list (read-number "New level for stemming (> 0) = ")))
+   (list 'ir-lm-stem-level
+	 (read-number "New level for stemming (> 0) = ")))
   (if (< new 1)
       (message "Incorrect value for stemming.")
-    (setq *ir-stem-level* new)
+    (set-default symbol new)
     (ir-refresh-view)
     (ir-load-auxiliary t)))
 
-(defun ir-lm-change-max-results (new)
+(defun ir-lm-change-max-results (symbol new)
   "Set NEW value for maximum number of search results."
   (interactive
-   (list (read-number "Maximum number of search results = ")))
-  (setq *ir-max-results* new)
+   (list 'ir-lm-max-results
+	 (read-number "Maximum number of search results = ")))
+  (set-default symbol new)
   (ir-refresh-view))
 
-(defun ir-lm-change-min-words (new)
+(defun ir-lm-change-min-words (symbol new)
   "Set NEW minimum number of words for paragraph."
   (interactive
-   (list (read-number "Minumun number of words in paragraph = ")))
-  (setq *ir-lm-min-words* new)
+   (list 'ir-lm-min-words
+	 (read-number "Minumun number of words in paragraph = ")))
+  (set-default symbol new)
   (ir-refresh-view))
 
 (defun ir-clear (&optional all)
@@ -442,7 +477,7 @@ If no such is found, process and cache."
 ;; 	     (when w3
 ;; 	       (setq w3 (car (read-from-string w3)))
 ;; 	       (and (numberp w3)
-;; 		    (>= w3 *ir-stem-level*)
+;; 		    (>= w3 ir-lm-stem-level)
 ;; 		    (puthash w1 w2 *ir-stem*))))))
 
 (defun ir-load-stemmer-bg (file)
@@ -456,7 +491,7 @@ If no such is found, process and cache."
 	       (when w3
 		 (setq w3 (car (read-from-string w3)))
 		 (and (numberp w3)
-		      (>= w3 *ir-stem-level*)
+		      (>= w3 ir-lm-stem-level)
 		      (puthash w1 w2 *ir-stem*)))))))
 
 (defun ir-load-auxiliary (&optional force)
@@ -484,7 +519,7 @@ When FORCE is non-nil, re-fill."
 
 (defmacro assess-paragraph ()
   "Remove a bit of boiler-plate from `ir-lm-extract-words'."
-  '(if (>= paragraph-total-count *ir-lm-min-words*)
+  '(if (>= paragraph-total-count ir-lm-min-words)
        (push (list paragraph-start paragraph-total-count
 		   paragraph-words-count paragraph)
 	     acc)
@@ -594,6 +629,7 @@ If ENCODING is nil, use default encoding when loading FILE."
     (mapc 'print-posting *ir-hashes*))	;write all postings
   (message "Index written."))
 
+;;;###autoload
 (defun ir-lm-index (dir &optional file-types encoding append-p)
   "Recursivelly process directory DIR and index all files.
 FILE-TYPES determines file name patterns for indexing.
@@ -694,6 +730,7 @@ INC-GLOBALS-P determines whether global word counts should be adjusted."
 	    (when file-sexp (push file-sexp *ir-hashes*))))))
     (kill-buffer (current-buffer))))
 
+;;;###autoload
 (defun ir-lm-load-index (file &optional append-p)
   "Load existing index FILE.
 If APPEND-P is non-nil, keep previous index loaded as well."
@@ -777,7 +814,7 @@ LAMBDA is LM parameter between 0 and 1."
   "For QUERY which is list of search terms find best CNT results.
 Return vector of vectors with info for best paragraphs."
   (let ((best (make-vector cnt [0 "" -1 nil nil]))
-	(min-score (ir-lm-posting-min-score query *ir-lm-lambda*)))
+	(min-score (ir-lm-posting-min-score query ir-lm-lambda)))
     (dolist (file *ir-hashes*)
       (let ((file-path (ir-file-name file)))
 	(when (file-exists-p file-path)
@@ -786,7 +823,7 @@ Return vector of vectors with info for best paragraphs."
 		   (ir-lm-posting-score (ir-paragraph-hash post)
 					(ir-paragraph-total-words
 					 post)
-					query *ir-lm-lambda*)))
+					query ir-lm-lambda)))
 	      (when (> score min-score)
 		(setq best (ir-lm-insert-post
 			    (vector score file-path
@@ -871,7 +908,7 @@ QUERY is list of current search terms."
   "For QUERY-STR find best CNT results."
   (interactive
    (list (read-string "Search for: " nil t) nil))
-  (or cnt (setq cnt *ir-max-results*))
+  (or cnt (setq cnt ir-lm-max-results))
   (if (null *ir-global-hash*)
       (message "No index loaded.")
     (or *ir-word-cache*
@@ -882,7 +919,7 @@ QUERY is list of current search terms."
 		     (lambda () (interactive) (forward-line 2)))
       (local-set-key (kbd "<M-up>")
 		     (lambda () (interactive) (forward-line -2)))
-      (local-set-key (kbd "q") (lambda () (interactive) (kill-buffer)))
+      (local-set-key "q" (lambda () (interactive) (kill-buffer)))
       (switch-to-buffer results)
       (insert "Results for: " query-str)
       (let ((query (delete nil
@@ -905,18 +942,19 @@ QUERY is list of current search terms."
 
 (defun ir-lm-set-keys ()
   "Set key bindings in the IR buffer."
-  (local-set-key (kbd "i") 'ir-lm-index)
-  (local-set-key (kbd "l") 'ir-lm-load-index)
-  (local-set-key (kbd "w") 'ir-lm-write-index)
-  (local-set-key (kbd "f") 'ir-lm-search)
-  (local-set-key (kbd "c") 'ir-clear)
-  (local-set-key (kbd "m") 'ir-lm-change-max-results)
-  (local-set-key (kbd "p") 'ir-lm-change-min-words)
-  (local-set-key (kbd "b") 'ir-lm-change-lambda)
-  (local-set-key (kbd "s") 'ir-change-stem-level)
-  (local-set-key (kbd "q") (lambda () (interactive) (kill-buffer)))
-  (local-set-key (kbd "r") (lambda () (interactive) (ir-refresh-view))))
+  (local-set-key "i" 'ir-lm-index)
+  (local-set-key "l" 'ir-lm-load-index)
+  (local-set-key "w" 'ir-lm-write-index)
+  (local-set-key "f" 'ir-lm-search)
+  (local-set-key "c" 'ir-clear)
+  (local-set-key "m" 'ir-lm-change-max-results)
+  (local-set-key "p" 'ir-lm-change-min-words)
+  (local-set-key "b" 'ir-lm-change-lambda)
+  (local-set-key "s" 'ir-lm-change-stem-level)
+  (local-set-key "q" (lambda () (interactive) (kill-buffer)))
+  (local-set-key "r" (lambda () (interactive) (ir-refresh-view))))
 
+;;;###autoload
 (defun ir-lm ()
   "Create buffer with information and shortcuts."
   (interactive)
@@ -952,16 +990,16 @@ QUERY is list of current search terms."
 		'ir-lm-change-lambda)
      "\n"
      (make-link "s -> change stemming level"
-		'ir-change-stem-level)
+		'ir-lm-change-stem-level)
      "\n"
      (make-link "q -> quit \(without clearing\)"
 		(lambda () (interactive) (kill-buffer)))
      "\n\n"
-     "maximum results = " (format "%d\n" *ir-max-results*)
+     "maximum results = " (format "%d\n" ir-lm-max-results)
      "minimum number of words in paragraph = "
-     (format "%d\n" *ir-lm-min-words*)
-     "lambda = " (format "%f\n" *ir-lm-lambda*)
-     "stemming level = " (format "%d\n" *ir-stem-level*)
+     (format "%d\n" ir-lm-min-words)
+     "lambda = " (format "%f\n" ir-lm-lambda)
+     "stemming level = " (format "%d\n" ir-lm-stem-level)
      "total words in texts = " (format "%d\n" *ir-total-count*)
      "words in index = " (format "%d\n" *ir-words-count*)
      "Currently indexed files [total words]:\n")
